@@ -30,13 +30,14 @@ class RegisterDockerHost extends Command
                 'inventory:read',
                 'inventory:write',
                 'heartbeat:write',
+                'scan:write',
             ]
         );
 
         $this->newLine();
         $this->info('Docker Host registered successfully.');
-        $this->line('Host ID: '.$host->id);
-        $this->line('Host Name: '.$host->name);
+        $this->line('Host ID: ' . $host->id);
+        $this->line('Host Name: ' . $host->name);
         $this->newLine();
 
         $this->warn('AGENT TOKEN - COPY IT NOW. IT WILL NOT BE SHOWN AGAIN.');

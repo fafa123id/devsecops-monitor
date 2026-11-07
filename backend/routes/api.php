@@ -4,6 +4,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\Agent\HeartbeatController;
 use App\Http\Controllers\Api\Agent\InventoryController;
+use App\Http\Controllers\Api\Agent\ProjectPolicyController;
+use App\Http\Controllers\Api\Agent\ScanController;
 
 Route::middleware('auth:sanctum')
     ->prefix('agent')
@@ -21,6 +23,10 @@ Route::middleware('auth:sanctum')
                 ],
             ]);
         });
+        Route::get('/policies', ProjectPolicyController::class)
+            ->middleware('abilities:inventory:write');
+        Route::post('/scans', ScanController::class)
+            ->middleware('abilities:scan:write');
         Route::post('/inventory', InventoryController::class)
             ->middleware('abilities:inventory:write');
         Route::post('/heartbeat', HeartbeatController::class)

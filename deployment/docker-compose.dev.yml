@@ -51,7 +51,34 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+  agent:
+    build:
+      context: ../agent
+      dockerfile: Dockerfile
+    container_name: devsecops-agent
+    restart: unless-stopped
+    init: true
 
+    env_file:
+      - ../agent/.env
+
+    environment:
+      DEVSECOPS_API_URL: http://api:8000
+      DOCKER_HOST: unix:///var/run/docker.sock
+      TZ: Asia/Jakarta
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    depends_on:
+      api:
+        condition: service_started
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped

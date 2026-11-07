@@ -10,19 +10,17 @@ import (
 )
 
 const (
-	composeProjectLabel = "com.docker.compose.project"
-	composeServiceLabel = "com.docker.compose.service"
+	composeProjectLabel     = "com.docker.compose.project"
+	composeServiceLabel     = "com.docker.compose.service"
+	composeWorkingDirLabel  = "com.docker.compose.project.working_dir"
+	composeConfigFilesLabel = "com.docker.compose.project.config_files"
 )
 
 type ProjectInventory struct {
 	DockerProjectName string               `json:"docker_project_name"`
+	SourceDirectory   string               `json:"source_directory,omitempty"`
+	ComposeFiles      []string             `json:"compose_files,omitempty"`
 	Containers        []ContainerInventory `json:"containers"`
-}
-
-type ImageScanTarget struct {
-	ImageReference string
-	ImageID        string
-	ImageDigest    string
 }
 
 type ContainerInventory struct {
@@ -50,7 +48,8 @@ func collectInventory(
 	}
 
 	projects := make(map[string][]ContainerInventory)
-
+	sourceDirectories := make(map[string]string)
+	composeFiles := make(map[string][]string)
 	for _, item := range result.Items {
 		projectName := item.Labels[composeProjectLabel]
 
@@ -58,7 +57,41 @@ func collectInventory(
 		if projectName == "" {
 			continue
 		}
+		workingDir := strings.TrimSpace(
+			item.Labels[composeWorkingDirLabel],
+		)
 
+		configFiles := strings.TrimSpace(
+			item.Labels[composeConfigFilesLabel],
+		)
+
+		if workingDir != "" {
+			existingDir := sourceDirectories[projectName]
+
+			if existingDir == "" {
+				sourceDirectories[projectName] = workingDir
+			} else if !strings.EqualFold(existingDir, workingDir) {
+				return nil, fmt.Errorf(
+					"inconsistent working directories for compose project %q: %q and %q",
+					projectName,
+					existingDir,
+					workingDir,
+				)
+			}
+		}
+
+		if configFiles != "" {
+			for _, file := range strings.Split(configFiles, ",") {
+				file = strings.TrimSpace(file)
+
+				if file != "" {
+					composeFiles[projectName] = append(
+						composeFiles[projectName],
+						file,
+					)
+				}
+			}
+		}
 		containerName := ""
 		if len(item.Names) > 0 {
 			containerName = strings.TrimPrefix(item.Names[0], "/")
@@ -88,8 +121,13 @@ func collectInventory(
 	inventory := make([]ProjectInventory, 0, len(projects))
 
 	for name, containers := range projects {
+		files := composeFiles[name]
+		sort.Strings(files)
+
 		inventory = append(inventory, ProjectInventory{
 			DockerProjectName: name,
+			SourceDirectory:   sourceDirectories[name],
+			ComposeFiles:      files,
 			Containers:        containers,
 		})
 	}
@@ -100,45 +138,28 @@ func collectInventory(
 
 	return inventory, nil
 }
-func collectUniqueImages(inventory []ProjectInventory) []ImageScanTarget {
-	uniqueImages := make(map[string]ImageScanTarget)
-
-	for _, project := range inventory {
-		for _, container := range project.Containers {
-			image := ImageScanTarget{
-				ImageReference: container.ImageReference,
-				ImageID:        container.ImageID,
-				ImageDigest:    container.ImageDigest,
-			}
-
-			// Prefer immutable image identity.
-			key := image.ImageID
-
-			if key == "" {
-				key = image.ImageDigest
-			}
-
-			if key == "" {
-				key = image.ImageReference
-			}
-
-			if key == "" {
-				continue
-			}
-
-			uniqueImages[key] = image
-		}
+func resolveImageRepoDigest(
+	ctx context.Context,
+	dockerClient *client.Client,
+	imageID string,
+) (string, error) {
+	if strings.TrimSpace(imageID) == "" {
+		return "", fmt.Errorf("image ID cannot be empty")
 	}
 
-	images := make([]ImageScanTarget, 0, len(uniqueImages))
-
-	for _, image := range uniqueImages {
-		images = append(images, image)
+	result, err := dockerClient.ImageInspect(ctx, imageID)
+	if err != nil {
+		return "", fmt.Errorf("inspect image %s: %w", imageID, err)
 	}
 
-	sort.Slice(images, func(i, j int) bool {
-		return images[i].ImageReference < images[j].ImageReference
-	})
+	repoDigests := result.RepoDigests
 
-	return images
+	if len(repoDigests) == 0 {
+		return "", nil
+	}
+
+	// Sort to make the selected digest deterministic.
+	sort.Strings(repoDigests)
+
+	return repoDigests[0], nil
 }

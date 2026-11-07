@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class ScanRun extends Model
 {
@@ -32,8 +32,11 @@ class ScanRun extends Model
         return $this->belongsTo(Project::class);
     }
 
-    public function findings(): HasMany
+    public function findings(): BelongsToMany
     {
-        return $this->hasMany(ScanFinding::class);
+        return $this->belongsToMany(
+            ScanFinding::class,
+            'scan_run_findings'
+        )->withTimestamps();
     }
 }

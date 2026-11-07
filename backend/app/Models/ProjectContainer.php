@@ -15,8 +15,14 @@ class ProjectContainer extends Model
         'image_reference',
         'image_digest',
         'container_state',
+        'last_seen_at',
     ];
-
+    protected function casts(): array
+    {
+        return [
+            'last_seen_at' => 'datetime',
+        ];
+    }
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);

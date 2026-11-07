@@ -22,7 +22,7 @@ return new class extends Migration
             // Referensi source code di host, bukan path bebas untuk eksekusi
             $table->string('source_path_reference')->nullable();
 
-            $table->boolean('scan_source')->default(false);
+            $table->boolean('scan_source')->default(true);
             $table->boolean('weekly_scan_enabled')->default(true);
 
             $table->string('status')->default('active');

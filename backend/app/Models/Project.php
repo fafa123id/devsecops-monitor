@@ -17,11 +17,17 @@ class Project extends Model
         'weekly_scan_enabled',
         'status',
         'last_scanned_at',
+        'last_seen_at',
+        'missing_since_at',
+        'missing_snapshots',
     ];
 
     protected function casts(): array
     {
         return [
+            'last_seen_at' => 'datetime',
+            'missing_since_at' => 'datetime',
+            'missing_snapshots' => 'integer',
             'scan_source' => 'boolean',
             'weekly_scan_enabled' => 'boolean',
             'last_scanned_at' => 'datetime',
