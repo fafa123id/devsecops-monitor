@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ScanRun extends Model
 {
@@ -38,5 +39,9 @@ class ScanRun extends Model
             ScanFinding::class,
             'scan_run_findings'
         )->withTimestamps();
+    }
+    public function ecosystems(): HasMany
+    {
+        return $this->hasMany(ScanRunEcosystem::class);
     }
 }

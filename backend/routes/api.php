@@ -1,11 +1,16 @@
 <?php
 
+use App\Http\Controllers\Api\ScanHistoryController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\Agent\HeartbeatController;
 use App\Http\Controllers\Api\Agent\InventoryController;
 use App\Http\Controllers\Api\Agent\ProjectPolicyController;
 use App\Http\Controllers\Api\Agent\ScanController;
+use App\Http\Controllers\Api\AgentController;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ProjectController;
+use App\Http\Controllers\Api\VulnerabilityController;
 
 Route::middleware('auth:sanctum')
     ->prefix('agent')
@@ -32,3 +37,19 @@ Route::middleware('auth:sanctum')
         Route::post('/heartbeat', HeartbeatController::class)
             ->middleware('abilities:heartbeat:write');
     });
+Route::prefix('auth')->group(function () {
+    Route::post('/login', [AuthController::class, 'login'])
+        ->middleware('throttle:6,1');
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/me', [AuthController::class, 'me']);
+        Route::post('/logout', [AuthController::class, 'logout']);
+    });
+});
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/agents', [AgentController::class, 'index']);
+    Route::get('/scans', [ScanHistoryController::class, 'index']);
+    Route::get('/vulnerabilities', [VulnerabilityController::class, 'index']);
+    Route::get('/projects', [ProjectController::class, 'index']);
+    Route::get('/projects/{project}', [ProjectController::class, 'show']);
+});

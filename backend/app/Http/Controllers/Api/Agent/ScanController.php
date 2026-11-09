@@ -247,6 +247,18 @@ class ScanController extends Controller
                     'started_at' => now(),
                     'scanner_version' => $validated['scanner_version'],
                 ]);
+                foreach ($ecosystems as $ecosystem) {
+                    $scanRun->ecosystems()->updateOrCreate(
+                        [
+                            'ecosystem' => strtolower(trim($ecosystem['ecosystem'])),
+                            'manifest_file' => $ecosystem['manifest_file'],
+                        ],
+                        [
+                            'status' => $ecosystem['status'],
+                            'error_message' => $ecosystem['error_message'] ?? null,
+                        ]
+                    );
+                }
 
                 $findingCount = 0;
                 $processedFingerprints = [];
