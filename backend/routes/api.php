@@ -9,6 +9,8 @@ use App\Http\Controllers\Api\Agent\ProjectPolicyController;
 use App\Http\Controllers\Api\Agent\ScanController;
 use App\Http\Controllers\Api\AgentController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\ProjectController;
 use App\Http\Controllers\Api\VulnerabilityController;
 
@@ -47,9 +49,16 @@ Route::prefix('auth')->group(function () {
     });
 });
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::patch('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    Route::patch('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
     Route::get('/agents', [AgentController::class, 'index']);
     Route::get('/scans', [ScanHistoryController::class, 'index']);
     Route::get('/vulnerabilities', [VulnerabilityController::class, 'index']);
     Route::get('/projects', [ProjectController::class, 'index']);
     Route::get('/projects/{project}', [ProjectController::class, 'show']);
+    Route::get('/dashboard/vulnerability-trend', [
+        DashboardController::class,
+        'vulnerabilityTrend',
+    ]);
 });

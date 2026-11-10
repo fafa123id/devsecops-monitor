@@ -1,6 +1,8 @@
 export const useApi = () => {
   const config = useRuntimeConfig();
-  const baseURL = config.public.apiBase as string;
+  const baseURL = import.meta.server
+    ? (config.apiServerBase as string)
+    : (config.public.apiBase as string);
 
   const request = async <T>(
     path: string,

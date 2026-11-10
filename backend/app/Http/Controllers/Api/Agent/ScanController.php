@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Agent;
 use App\Http\Controllers\Controller;
 use App\Models\ScanFinding;
 use App\Models\ScanRun;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -372,7 +373,13 @@ class ScanController extends Controller
                         $scanRun->findings()->syncWithoutDetaching([
                             $scanFinding->id,
                         ]);
-
+                        if (in_array($scanFinding->status, ['new', 'reopened'], true)) {
+                            app(NotificationService::class)->notifyFinding(
+                                $scanFinding,
+                                $scanRun,
+                                $scanFinding->status
+                            );
+                        }
                         $findingCount++;
                     }
                 }
@@ -426,7 +433,9 @@ class ScanController extends Controller
                         ? $errors->implode("\n")
                         : null,
                 ]);
-
+                if ($status === 'failed') {
+                    app(NotificationService::class)->notifyScanFailed($scanRun);
+                }
                 $project->update([
                     'last_scanned_at' => now(),
                 ]);

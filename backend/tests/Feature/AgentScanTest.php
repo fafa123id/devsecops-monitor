@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\DockerHost;
 use App\Models\Project;
 use App\Models\ScanFinding;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -468,5 +469,87 @@ class AgentScanTest extends TestCase
             'project_id' => $project->id,
             'finding_id' => 'GHSA-xxxx-yyyy-zzzz',
         ]);
+    }
+    public function test_new_and_reopened_vulnerabilities_create_notifications_without_duplicates(): void
+    {
+        $host = $this->createHost();
+        $project = $this->createProject($host);
+        $user = User::factory()->create();
+
+        // Scan pertama: vulnerability baru ditemukan.
+        $this->submitScan($host, $this->scanPayload())
+            ->assertOk();
+
+        $this->assertDatabaseCount('notifications', 1);
+
+        $this->assertDatabaseHas('notifications', [
+            'user_id' => $user->id,
+            'project_id' => $project->id,
+            'type' => 'vulnerability_detected',
+            'severity' => 'high',
+            'title' => 'HIGH vulnerability detected',
+        ]);
+
+        // Scan kedua: vulnerability masih existing.
+        // Tidak boleh membuat notifikasi duplikat.
+        $this->submitScan($host, $this->scanPayload())
+            ->assertOk();
+
+        $this->assertDatabaseCount('notifications', 1);
+
+        // Scan ketiga: vulnerability sudah tidak ditemukan.
+        $emptyPayload = $this->scanPayload();
+        $emptyPayload['projects'][0]['ecosystems'][0]['findings'] = [];
+
+        $this->submitScan($host, $emptyPayload)
+            ->assertOk();
+
+        // Scan keempat: vulnerability muncul kembali.
+        $this->submitScan($host, $this->scanPayload())
+            ->assertOk();
+
+        $this->assertDatabaseCount('notifications', 2);
+
+        $this->assertDatabaseHas('notifications', [
+            'user_id' => $user->id,
+            'project_id' => $project->id,
+            'type' => 'vulnerability_reopened',
+            'severity' => 'high',
+            'title' => 'HIGH vulnerability reopened',
+        ]);
+    }
+    public function test_failed_scan_creates_notification(): void
+    {
+        $host = $this->createHost();
+        $project = $this->createProject($host);
+        $user = User::factory()->create();
+
+        $payload = $this->scanPayload();
+
+        $payload['projects'][0]['ecosystems'][0] = [
+            'ecosystem' => 'composer',
+            'manifest_file' => 'composer.lock',
+            'status' => 'failed',
+            'error_message' => 'Composer audit execution failed.',
+            'findings' => [],
+        ];
+
+        $response = $this->submitScan($host, $payload);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('projects.0.status', 'failed');
+
+        $scanRun = \App\Models\ScanRun::firstOrFail();
+
+        $this->assertDatabaseHas('notifications', [
+            'user_id' => $user->id,
+            'project_id' => $project->id,
+            'scan_run_id' => $scanRun->id,
+            'type' => 'scan_failed',
+            'title' => 'Dependency scan failed',
+        ]);
+
+        $this->assertDatabaseCount('notifications', 1);
     }
 }

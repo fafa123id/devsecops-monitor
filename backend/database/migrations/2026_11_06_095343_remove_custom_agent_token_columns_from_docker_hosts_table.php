@@ -1,4 +1,3 @@
-
 <?php
 
 use Illuminate\Database\Migrations\Migration;
@@ -11,6 +10,7 @@ return new class extends Migration
     {
         Schema::table('docker_hosts', function (Blueprint $table) {
             $table->dropUnique(['agent_token_id']);
+            $table->dropUnique(['agent_token_hash']);
 
             $table->dropColumn([
                 'agent_token_id',
@@ -23,7 +23,7 @@ return new class extends Migration
     {
         Schema::table('docker_hosts', function (Blueprint $table) {
             $table->string('agent_token_id', 32)->nullable()->unique();
-            $table->string('agent_token_hash');
+            $table->string('agent_token_hash')->unique();
         });
     }
 };

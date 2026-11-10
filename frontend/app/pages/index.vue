@@ -34,6 +34,13 @@ interface Scan {
   started_at: string | null;
   created_at: string | null;
 }
+interface TrendScan {
+  id: number;
+  date: string;
+  project: string | null;
+  findings_count: number;
+  status: string;
+}
 interface AgentSummary {
   total: number;
   online: number;
@@ -53,9 +60,11 @@ const api = useApi();
 
 const loading = ref(true);
 const error = ref("");
-
+const refreshError = ref("");
+const lastUpdatedAt = ref<Date | null>(null);
 const projects = ref<Project[]>([]);
 const recentScans = ref<Scan[]>([]);
+const vulnerabilityTrend = ref<TrendScan[]>([]);
 const agentSummary = ref<AgentSummary>({
   total: 0,
   online: 0,
@@ -180,6 +189,48 @@ const severityBarItems = computed(() =>
 const severityBarStyle = (item: (typeof severityBarItems.value)[number]) => ({
   width: `${item.percentage}%`,
 });
+const trendChart = computed(() => {
+  const items = vulnerabilityTrend.value;
+  const width = 720;
+  const height = 220;
+  const paddingX = 36;
+  const paddingY = 24;
+
+  const maxValue = Math.max(5, ...items.map((item) => item.findings_count));
+
+  const points = items.map((item, index) => {
+    const x =
+      items.length <= 1
+        ? width / 2
+        : paddingX + (index / (items.length - 1)) * (width - paddingX * 2);
+
+    const y =
+      height -
+      paddingY -
+      (item.findings_count / maxValue) * (height - paddingY * 2);
+
+    return {
+      ...item,
+      x,
+      y,
+      label: new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+      }).format(new Date(item.date)),
+    };
+  });
+
+  return {
+    points,
+    line: points.map((point) => `${point.x},${point.y}`).join(" "),
+    area: points.length
+      ? `${points[0].x},${height - paddingY} ${points.map((point) => `${point.x},${point.y}`).join(" ")} ${points[points.length - 1].x},${height - paddingY}`
+      : "",
+    maxValue,
+    width,
+    height,
+  };
+});
 
 const formatStatus = (status: string) => {
   if (!status) return "Unknown";
@@ -246,9 +297,17 @@ const getApiError = (err: unknown) => {
 
   return "Unable to retrieve dashboard data.";
 };
-
+const isRefreshing = ref(false);
+const hasLoaded = ref(false);
 const fetchDashboard = async () => {
-  loading.value = true;
+  if (isRefreshing.value) return;
+
+  isRefreshing.value = true;
+
+  if (!hasLoaded.value) {
+    loading.value = true;
+  }
+
   error.value = "";
 
   try {
@@ -257,6 +316,7 @@ const fetchDashboard = async () => {
       vulnerabilityResponse,
       scanResponse,
       agentResponse,
+      trendResponse,
     ] = await Promise.all([
       api.get<{
         data: Project[];
@@ -274,16 +334,30 @@ const fetchDashboard = async () => {
       api.get<{
         summary: AgentSummary;
       }>("/api/agents"),
+      api.get<{
+        data: TrendScan[];
+      }>("/api/dashboard/vulnerability-trend"),
     ]);
 
     projects.value = projectResponse.data;
     summary.value = vulnerabilityResponse.summary;
     recentScans.value = scanResponse.data;
     agentSummary.value = agentResponse.summary;
+    vulnerabilityTrend.value = trendResponse.data;
+    refreshError.value = "";
+    hasLoaded.value = true;
+    lastUpdatedAt.value = new Date();
   } catch (err) {
-    error.value = getApiError(err);
+    const message = getApiError(err);
+
+    if (hasLoaded.value) {
+      refreshError.value = message;
+    } else {
+      error.value = message;
+    }
   } finally {
     loading.value = false;
+    isRefreshing.value = false;
   }
 };
 
@@ -320,15 +394,40 @@ onUnmounted(() => {
         <p class="mt-2 text-sm text-slate-400">
           Monitor vulnerabilities across your Docker Compose projects.
         </p>
+        <p v-if="lastUpdatedAt" class="mt-2 text-xs text-slate-500">
+          Last updated:
+          {{
+            lastUpdatedAt.toLocaleTimeString("id-ID", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })
+          }}
+        </p>
+        <p v-if="refreshError" class="mt-1 text-xs text-red-400">
+          Refresh failed: {{ refreshError }}
+        </p>
       </div>
 
-      <div
-        class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2"
-      >
-        <span class="h-2 w-2 rounded-full" :class="monitoringStatus.dot" />
-        <span class="text-xs" :class="monitoringStatus.text">
-          {{ monitoringStatus.label }}
-        </span>
+      <div class="flex items-center gap-3">
+        <div
+          class="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2"
+        >
+          <span class="h-2 w-2 rounded-full" :class="monitoringStatus.dot" />
+          <span class="text-xs" :class="monitoringStatus.text">
+            {{ monitoringStatus.label }}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          :disabled="isRefreshing"
+          @click="fetchDashboard"
+          class="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-sky-500/50 hover:text-sky-400 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <span :class="{ 'animate-spin': isRefreshing }">↻</span>
+          {{ isRefreshing ? "Refreshing..." : "Refresh" }}
+        </button>
       </div>
     </section>
 
@@ -537,7 +636,114 @@ onUnmounted(() => {
           </div>
         </div>
       </section>
+      <!-- Vulnerability Trend -->
+      <section class="rounded-xl border border-slate-800 bg-[#111827] p-6">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="font-semibold text-white">Vulnerability Trend</h2>
+            <p class="mt-1 text-xs text-slate-500">
+              Vulnerability findings detected across recent scans
+            </p>
+          </div>
 
+          <span
+            class="rounded-md bg-slate-800 px-2 py-1 text-xs text-slate-400"
+          >
+            Last {{ vulnerabilityTrend.length }} scans
+          </span>
+        </div>
+
+        <div v-if="vulnerabilityTrend.length" class="mt-6 overflow-x-auto">
+          <svg
+            :viewBox="`0 0 ${trendChart.width} ${trendChart.height}`"
+            class="h-auto min-w-[560px] w-full"
+            role="img"
+            aria-label="Vulnerability findings trend chart"
+          >
+            <defs>
+              <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.25" />
+                <stop offset="100%" stop-color="#38bdf8" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+
+            <line
+              v-for="line in 4"
+              :key="line"
+              x1="36"
+              :y1="24 + (line - 1) * 57"
+              x2="684"
+              :y2="24 + (line - 1) * 57"
+              stroke="#334155"
+              stroke-dasharray="4 5"
+            />
+
+            <polygon
+              v-if="trendChart.points.length > 1"
+              :points="trendChart.area"
+              fill="url(#trendGradient)"
+            />
+
+            <polyline
+              v-if="trendChart.points.length > 1"
+              :points="trendChart.line"
+              fill="none"
+              stroke="#38bdf8"
+              stroke-width="3"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+
+            <g v-for="(point, index) in trendChart.points" :key="point.id">
+              <circle
+                :cx="point.x"
+                :cy="point.y"
+                r="6"
+                fill="#0f172a"
+                stroke="#38bdf8"
+                stroke-width="2.5"
+                class="cursor-pointer transition-all hover:fill-sky-400"
+              >
+                <title>
+                  {{ point.project ?? "Unknown project" }}
+                  | {{ point.findings_count }} vulnerabilities |
+                  {{ formatDate(point.date) }} |
+                  {{ formatStatus(point.status) }}
+                </title>
+              </circle>
+
+              <text
+                :x="point.x"
+                :y="trendChart.height - 3"
+                fill="#64748b"
+                font-size="11"
+                text-anchor="middle"
+              >
+                {{ point.label }}
+              </text>
+
+              <text
+                :x="point.x"
+                :y="point.y - 12"
+                fill="#cbd5e1"
+                font-size="11"
+                text-anchor="middle"
+              >
+                {{ point.findings_count }}
+              </text>
+            </g>
+          </svg>
+        </div>
+
+        <div v-else class="py-12 text-center">
+          <p class="text-sm text-slate-400">
+            No vulnerability trend data available.
+          </p>
+          <p class="mt-1 text-xs text-slate-600">
+            Trend data will appear after dependency scans are completed.
+          </p>
+        </div>
+      </section>
       <!-- Recent scans -->
       <section
         class="overflow-hidden rounded-xl border border-slate-800 bg-[#111827]"
